@@ -1,0 +1,53 @@
+id,question,topic,marks,true_bloom_level
+Q001,Define a stack.,Stack,2,Remember
+Q002,List the types of linked lists.,Linked List,2,Remember
+Q003,State the time complexity of binary search.,Searching,2,Remember
+Q004,Name the traversal orders of a binary tree.,Trees,2,Remember
+Q005,Define a graph.,Graphs,2,Remember
+Q006,List the properties of a queue.,Queue,2,Remember
+Q007,State the worst-case time complexity of quick sort.,Sorting,2,Remember
+Q008,Name any two collision resolution techniques in hashing.,Hashing,2,Remember
+Q009,What is a deque?,Queue,2,Remember
+Q010,What is a hash collision?,Hashing,2,Remember
+Q011,Explain how a circular queue overcomes the limitation of a linear queue.,Queue,3,Understand
+Q012,Describe the working of insertion sort.,Sorting,3,Understand
+Q013,Summarize the differences between an array and a linked list.,Linked List,3,Understand
+Q014,Explain the concept of recursion with an example.,Recursion,3,Understand
+Q015,Describe how a binary search tree maintains ordering.,Trees,3,Understand
+Q016,Explain the role of a hash function.,Hashing,3,Understand
+Q017,Describe breadth-first search.,Graphs,3,Understand
+Q018,Explain why a stack is called a LIFO structure.,Stack,3,Understand
+Q019,How does a stack support recursion?,Recursion,3,Understand
+Q020,Why is a doubly linked list preferred for backward traversal?,Linked List,3,Understand
+Q021,Solve the Tower of Hanoi problem for 3 disks.,Recursion,5,Apply
+Q022,Calculate the number of comparisons needed by binary search on 1024 sorted elements.,Searching,5,Apply
+Q023,Implement a stack using an array.,Stack,5,Apply
+Q024,Use Dijkstra's algorithm to find shortest paths from node A in a given weighted graph.,Graphs,5,Apply
+Q025,"Construct a binary search tree from the keys 50, 30, 70, 20, 40.",Trees,5,Apply
+Q026,Demonstrate insertion of a node at the beginning of a singly linked list.,Linked List,5,Apply
+Q027,"Apply merge sort to the array 38, 27, 43, 3, 9, 82, 10.",Sorting,5,Apply
+Q028,Convert the infix expression A+B*C to postfix using a stack.,Stack,5,Apply
+Q029,Compare quick sort and merge sort in terms of time and space complexity.,Sorting,5,Analyze
+Q030,Differentiate between BFS and DFS traversals.,Graphs,5,Analyze
+Q031,Examine why the worst case of a binary search tree degrades to O(n).,Trees,5,Analyze
+Q032,Analyze the amortized time complexity of inserting n elements into a dynamic array.,Arrays,5,Analyze
+Q033,Distinguish between chaining and open addressing in hashing.,Hashing,5,Analyze
+Q034,Compare array-based and linked-list-based implementations of a queue.,Queue,5,Analyze
+Q035,Break down the steps of cycle detection in a directed graph and analyze its complexity.,Graphs,5,Analyze
+Q036,Investigate how recursion depth affects stack memory usage.,Recursion,5,Analyze
+Q037,Justify the use of a balanced tree over an unbalanced BST for large datasets.,Trees,6,Evaluate
+Q038,Assess the suitability of hash tables for storing sorted data.,Hashing,6,Evaluate
+Q039,Critique the use of bubble sort for large datasets.,Sorting,6,Evaluate
+Q040,Evaluate the trade-offs between adjacency matrix and adjacency list representations.,Graphs,6,Evaluate
+Q041,Judge which data structure is best for an undo feature and defend your choice.,Stack,6,Evaluate
+Q042,Recommend a suitable searching technique for a frequently updated list and justify it.,Searching,6,Evaluate
+Q043,Argue whether a linked list or an array is better for frequent insertions in the middle.,Linked List,6,Evaluate
+Q044,Defend the choice of a priority queue for CPU scheduling.,Queue,6,Evaluate
+Q045,"Design a stack that supports push, pop and retrieving the minimum in O(1).",Stack,8,Create
+Q046,Develop an algorithm to reverse a singly linked list.,Linked List,8,Create
+Q047,Propose a hashing scheme for a student record database with minimal collisions.,Hashing,8,Create
+Q048,Design an algorithm to check whether a binary tree is a valid BST.,Trees,8,Create
+Q049,Create a menu-driven program to perform queue operations.,Queue,8,Create
+Q050,Formulate an efficient algorithm to merge two sorted arrays.,Arrays,8,Create
+Q051,Develop a hybrid sorting approach that combines insertion sort and merge sort.,Sorting,8,Create
+Q052,Design a route planning model for a city map using graphs.,Graphs,8,Create

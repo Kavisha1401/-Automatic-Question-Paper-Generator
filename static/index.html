@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QPGen · Question Paper Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f6f8;--surface:#fff;--surface2:#f9fafb;--border:#e4e7ec;--text:#101828;--muted:#667085;
+  --accent:#2563eb;--accent-soft:#eaf1ff;--accent-ink:#fff;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;
+  --side:#0b1220;--side-text:#9aa6bd;--side-active:#18233b;--shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+  --l-Remember:#3b82f6;--l-Understand:#14b8a6;--l-Apply:#22c55e;--l-Analyze:#eab308;--l-Evaluate:#f97316;--l-Create:#a855f7;
+  --d-Easy:#22c55e;--d-Medium:#eab308;--d-Hard:#ef4444;
+}
+[data-theme=dark]{
+  --bg:#0a0f1c;--surface:#111827;--surface2:#0f1626;--border:#222c42;--text:#e7ebf3;--muted:#8d99b3;
+  --accent:#5b8cff;--accent-soft:#16254a;--accent-ink:#0a0f1c;--side:#070b15;--side-active:#131d33;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;margin:0}
+body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+svg.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+/* sidebar */
+.sb{background:var(--side);color:var(--side-text);padding:18px 14px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 22px;color:#fff}
+.brand .logo{width:34px;height:34px;border-radius:9px;background:var(--accent);display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;letter-spacing:.5px}
+.brand b{display:block;font-size:15px}.brand small{font-size:11px;color:var(--side-text)}
+.nav{display:flex;flex-direction:column;gap:3px}
+.nav button{display:flex;align-items:center;gap:11px;border:0;background:none;color:var(--side-text);padding:10px 12px;border-radius:9px;cursor:pointer;font-weight:500;text-align:left;width:100%}
+.nav button:hover{background:var(--side-active);color:#fff}
+.nav button.on{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--accent)}
+.sb .foot{margin-top:auto;padding:12px;border:1px solid #1d2943;border-radius:10px;font-size:12px;line-height:1.5}
+.sb .foot b{color:#fff;font-size:18px;display:block}
+/* main */
+.main{min-width:0}
+.top{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.top h1{font-size:18px;font-weight:600}.top p{color:var(--muted);font-size:12.5px;margin-top:2px}
+.ibtn{border:1px solid var(--border);background:var(--surface);width:36px;height:36px;border-radius:9px;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.ibtn:hover{color:var(--text);border-color:var(--muted)}
+.content{padding:24px 28px;max-width:1360px}
+.view{display:none}.view.on{display:block}
+/* ui */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}
+.card .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);font-weight:600}
+.card .hd .sp{margin-left:auto;display:flex;gap:8px;align-items:center}
+.card .bd{padding:18px}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g2{grid-template-columns:1fr 1fr}
+.mb{margin-bottom:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.sm{padding:5px 10px;font-size:12.5px;border-radius:8px}
+.btn.danger{color:var(--bad)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.55;cursor:default}
+label.l{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em}
+label.l:first-child{margin-top:0}
+input[type=text],input[type=number],input[type=password],select,textarea{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+textarea{resize:vertical;min-height:78px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px;gap:3px}
+.seg button{border:0;background:none;padding:7px 8px;border-radius:7px;cursor:pointer;font-weight:500;color:var(--muted);font-size:13px}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.row{display:flex;gap:10px;align-items:center}.row>*{flex:1}
+.muted{color:var(--muted)}.small{font-size:12.5px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:600;color:#fff}
+.pill.soft{background:var(--accent-soft);color:var(--accent)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.hide{display:none!important}
+/* kpi */
+.kpi{padding:16px 18px}
+.kpi .k{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.kpi .v{font-size:28px;font-weight:700;margin-top:6px;letter-spacing:-.5px}
+.kpi .s{font-size:12px;color:var(--muted);margin-top:2px}
+.kpi.ok .v{color:var(--ok)}.kpi.warn .v{color:var(--warn)}
+/* charts */
+.donutwrap{display:flex;align-items:center;gap:18px}
+svg.donut{width:130px;height:130px;flex-shrink:0}
+svg.donut .dn{font-size:19px;font-weight:700;fill:var(--text)}svg.donut .dl{font-size:7px;fill:var(--muted)}
+.legend{flex:1;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.legend div{display:flex;align-items:center;gap:8px}.legend .n{margin-left:auto;font-weight:600}.legend .pc{color:var(--muted);width:38px;text-align:right}
+.hb{display:grid;grid-template-columns:96px 1fr 28px;gap:10px;align-items:center;font-size:12.5px;margin:8px 0}
+.hb .t{height:8px;background:var(--surface2);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.hb .f{height:100%;border-radius:8px}.hb .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.hb .c{text-align:right;font-weight:600}
+.cols{display:flex;align-items:flex-end;gap:10px;height:130px;padding-top:6px}
+.cols .col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:11.5px;gap:4px}
+.cols .bar{width:100%;max-width:38px;border-radius:6px 6px 0 0;background:var(--accent);min-height:2px}
+.stack{display:flex;height:14px;border-radius:8px;overflow:hidden;margin:6px 0 12px}
+/* generate */
+.gen{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:start}
+.sticky{position:sticky;top:84px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);border-radius:99px;padding:5px 11px;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--muted)}
+.chip.on{color:var(--text);border-color:var(--text);background:var(--surface2)}
+.chip .dot{opacity:.35}.chip.on .dot{opacity:1}
+.chip small{color:var(--muted)}
+.toggle{display:flex;align-items:center;justify-content:space-between;margin-top:16px;font-size:13.5px}
+.toggle input{appearance:none;width:38px;height:22px;border-radius:99px;background:var(--border);position:relative;cursor:pointer;transition:.15s}
+.toggle input::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
+.toggle input:checked{background:var(--accent)}.toggle input:checked::after{left:19px}
+.empty{padding:56px 20px;text-align:center;color:var(--muted)}
+.empty h3{color:var(--text);font-size:16px;margin:12px 0 4px}
+.empty svg.i{width:38px;height:38px;color:var(--muted)}
+.sheet{padding:34px 44px}
+.sheet h2{text-align:center;font-family:Georgia,"Times New Roman",serif;font-size:24px}
+.sheet .sub{text-align:center;color:var(--muted);margin-top:3px}
+.sheet .meta{display:flex;justify-content:space-between;font-weight:600;border-top:2px solid var(--text);border-bottom:1px solid var(--border);padding:7px 0;margin:14px 0 2px}
+.sec-t{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin:22px 0 4px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.q{display:grid;grid-template-columns:44px 1fr auto;gap:10px;padding:13px 6px;border-bottom:1px solid var(--border)}
+.q:last-child{border-bottom:0}.q:hover{background:var(--surface2)}
+.q .no{font-weight:700;color:var(--accent)}
+.q .tags{display:flex;gap:8px;align-items:center;margin-top:7px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.q .mk{text-align:right;font-weight:700}
+/* table */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:10px 12px;background:var(--surface2);border-bottom:1px solid var(--border);font-weight:600}
+td{padding:7px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--surface2)}
+td input[type=text],td input[type=number]{border-color:transparent;background:transparent;padding:6px 8px}
+td input:hover{border-color:var(--border)}td input:focus{background:var(--surface)}
+td input[type=checkbox],th input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+.pk{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);cursor:pointer}
+.pk:hover{background:var(--surface2)}.pk input{accent-color:var(--accent);width:15px;height:15px;flex-shrink:0}
+.pager{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid var(--border)}
+.toolbar{display:flex;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.toolbar input,.toolbar select{width:auto;min-width:150px}.toolbar .grow{flex:1;min-width:200px}
+/* analytics */
+.cm{display:grid;gap:4px;font-size:12.5px}
+.cm div{padding:9px 6px;text-align:center;border-radius:6px}
+.cm .h{color:var(--muted);font-size:11px;font-weight:600;background:none}
+.bar-sm{height:6px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);overflow:hidden;min-width:70px}
+.bar-sm i{display:block;height:100%;background:var(--accent)}
+.hist{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.hist:last-child{border-bottom:0}
+/* toast */
+#toast{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:10px;z-index:99}
+#toast div{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--ok);box-shadow:0 8px 24px rgba(16,24,40,.18);padding:11px 15px;border-radius:9px;font-size:13.5px;max-width:360px}
+#toast div.err{border-left-color:var(--bad)}#toast div.warn{border-left-color:var(--warn)}
+.spin{width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr}.gen{grid-template-columns:1fr}.sticky{position:static}}
+@media(max-width:820px){.app{grid-template-columns:1fr}.sb{position:static;height:auto;flex-direction:row;align-items:center;overflow-x:auto;padding:10px}.brand{padding:0 10px 0 0}.nav{flex-direction:row}.sb .foot{display:none}.g2{grid-template-columns:1fr}.content{padding:16px}.sheet{padding:20px}}
+@media print{.sb,.top,.gen>div:first-child,.noprint,.q .act{display:none!important}.app{display:block}.content{padding:0}.gen{display:block}.card{border:0;box-shadow:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sb">
+  <div class="brand"><div class="logo">QP</div><div><b>QPGen</b><small>Paper Generator</small></div></div>
+  <nav class="nav" id="nav">
+    <button data-v="dashboard" class="on"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Dashboard</button>
+    <button data-v="generate"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>Generate Paper</button>
+    <button data-v="bank"><svg class="i" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Question Bank</button>
+    <button data-v="analytics"><svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Classifier Analytics</button>
+  </nav>
+  <div class="foot"><b id="sbCount">0</b>questions in the bank<br><span id="sbSrc"></span></div>
+</aside>
+
+<div class="main">
+<header class="top">
+  <div><h1 id="pageTitle">Dashboard</h1><p id="pageSub"></p></div>
+  <button class="ibtn" id="theme" title="Toggle dark mode"></button>
+</header>
+<div class="content">
+
+<!-- DASHBOARD -->
+<section class="view on" id="v-dashboard">
+  <div class="grid g4 mb" id="kpis"></div>
+  <div class="grid g3 mb">
+    <div class="card"><div class="hd">Bloom's level distribution</div><div class="bd" id="dLevels"></div></div>
+    <div class="card"><div class="hd">Questions per topic</div><div class="bd" id="dTopics"></div></div>
+    <div class="card"><div class="hd">Marks &amp; difficulty</div><div class="bd" id="dMarks"></div></div>
+  </div>
+  <div class="grid g2">
+    <div class="card"><div class="hd">Recent papers<div class="sp"><button class="btn sm" id="clearHist">Clear</button></div></div><div class="bd" id="hist"></div></div>
+    <div class="card"><div class="hd">Quick start</div><div class="bd">
+      <p class="muted" style="line-height:1.6">Load a question bank, tune the Bloom's levels, marks and difficulty, then generate a balanced paper. Every paper is reproducible from its seed.</p>
+      <div class="row" style="margin-top:16px"><button class="btn pri" data-go="generate">Generate a paper</button><button class="btn" data-go="bank">Manage question bank</button></div>
+    </div></div>
+  </div>
+</section>
+
+<!-- GENERATE -->
+<section class="view" id="v-generate">
+<div class="gen">
+  <div class="sticky">
+    <div class="card mb"><div class="hd">Paper settings</div><div class="bd">
+      <div class="seg" id="modeSeg" style="margin-bottom:16px"><button class="on" data-mode="auto">Auto-select</button><button data-mode="manual">Pick manually</button></div>
+      <div id="autoBox">
+        <label class="l">Bloom's levels</label><div class="chips" id="levelChips"></div>
+        <div class="row"><div><label class="l">Questions</label><input type="number" id="n" min="1" value="10"></div>
+          <div><label class="l">Total marks</label><input type="number" id="marks" min="1" max="500" value="40"></div></div>
+        <div class="small muted" id="nAvail" style="margin-top:6px"></div>
+        <label class="l">Seed</label><div class="row" style="gap:6px"><input type="number" id="seed" min="0" max="9999" value="1"><button class="btn" id="shuffle" title="Random seed" style="flex:0 0 auto;padding:8px 10px"><svg class="i" viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button></div>
+        <label class="l">Difficulty</label>
+        <div class="seg" id="diffSeg"><button class="on" data-d="Mixed">Mixed</button><button data-d="Easy">Easy</button><button data-d="Medium">Medium</button><button data-d="Hard">Hard</button></div>
+      </div>
+      <p class="small muted hide" id="manualNote" style="line-height:1.6">Tick any questions in the list on the right. You can pick as many as you want; the total marks is the sum of your picks.</p>
+      <label class="toggle">Section-wise layout<input type="checkbox" id="sections" checked></label>
+    </div></div>
+    <div class="card mb"><div class="hd">Paper details</div><div class="bd">
+      <label class="l">Exam title</label><input type="text" id="title" value="Internal Examination">
+      <label class="l">Subject</label><input type="text" id="subject" value="Data Structures">
+      <label class="l">Duration</label><input type="text" id="duration" value="2 Hours">
+    </div></div>
+    <button class="btn pri block" id="genBtn" style="padding:11px">Generate paper</button>
+  </div>
+
+  <div>
+    <div class="card mb hide" id="pickCard">
+      <div class="hd">Choose questions <span class="muted small" id="pickInfo" style="font-weight:400"></span>
+        <div class="sp"><button class="btn sm" id="pickAll">Select all shown</button><button class="btn sm" id="pickNone">Clear</button></div></div>
+      <div class="toolbar">
+        <input type="text" id="pq" class="grow" placeholder="Search questions or topics">
+        <select id="pl"><option value="">All levels</option></select>
+        <select id="pt"><option value="">All topics</option></select>
+      </div>
+      <div style="max-height:420px;overflow:auto" id="pickList"></div>
+    </div>
+    <div class="card" id="paperEmpty"><div class="empty">
+      <svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+      <h3>No paper yet</h3><p>Choose your settings or questions, then click the button on the left to build your paper.</p></div></div>
+    <div id="paperView" class="hide">
+      <div class="grid g4 mb" id="stats"></div>
+      <div class="card mb"><div class="hd">Question paper<div class="sp noprint">
+        <button class="btn sm" data-x="pdf">PDF</button><button class="btn sm" data-x="docx">Word</button><button class="btn sm" data-x="txt">Text</button><button class="btn sm" onclick="window.print()">Print</button>
+        <button class="btn sm pri" id="regen">Regenerate</button></div></div>
+        <div class="sheet" id="sheet"></div></div>
+      <div class="grid g3 noprint" id="pCharts"></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- BANK -->
+<section class="view" id="v-bank">
+  <div class="card mb"><div class="hd">Source</div><div class="bd">
+    <div class="seg" id="srcSeg" style="max-width:460px"><button class="on" data-s="sample">Sample bank</button><button data-s="upload">Upload CSV</button><button data-s="topics">Generate from topics</button></div>
+    <div id="p-upload" class="hide" style="margin-top:14px;max-width:460px">
+      <input type="file" id="file" accept=".csv">
+      <p class="small muted" style="margin-top:8px">Needs a "question" column; "topic" and "marks" are optional. <a href="/api/template.csv" style="color:var(--accent)">Download template</a></p>
+    </div>
+    <div id="p-topics" class="hide" style="margin-top:14px">
+      <div class="grid g2">
+        <div><label class="l">Topics (commas or new lines)</label><textarea id="topics" placeholder="Stack, Queue, Binary Trees"></textarea>
+          <label class="l">Subject / course (optional)</label><input type="text" id="course"></div>
+        <div><label class="l">Method</label>
+          <div class="seg" id="methSeg"><button class="on" data-m="templates">Offline templates</button><button data-m="ai">AI (Groq)</button></div>
+          <div id="aiBox" class="hide"><label class="l">Groq API key</label><input type="password" id="key"><label class="l">Model</label><input type="text" id="model" value="llama-3.3-70b-versatile"></div>
+          <label class="l">Questions per Bloom's level <span id="plv" style="float:right;color:var(--text)">1</span></label><input type="range" id="perLevel" min="1" max="3" value="1">
+          <button class="btn pri" id="genTopics" style="margin-top:14px">Generate questions</button></div>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="card mb hide" id="addCard"><div class="hd">Add questions<div class="sp"><button class="btn sm" id="addClose">Close</button></div></div><div class="bd">
+    <label class="l">One question per line</label><textarea id="addText" placeholder="Define a stack.&#10;Compare BFS and DFS."></textarea>
+    <div class="row"><div><label class="l">Topic</label><input type="text" id="addTopic" list="topicList"><datalist id="topicList"></datalist></div>
+      <div><label class="l">Marks (each)</label><input type="number" id="addMarks" value="5" min="1" max="20"></div></div>
+    <button class="btn pri" id="addBtn" style="margin-top:14px">Add to bank</button>
+  </div></div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="text" id="bq" class="grow" placeholder="Search questions or topics">
+      <select id="bl"><option value="">All levels</option></select>
+      <select id="bt"><option value="">All topics</option></select>
+      <button class="btn" id="addOpen">+ Add questions</button>
+      <button class="btn hide" id="useSel">Use selected in paper</button>
+      <button class="btn danger hide" id="delSel">Delete selected</button>
+      <button class="btn pri" id="saveBank">Save changes</button>
+      <a class="btn" href="/api/bank.csv">Download CSV</a>
+    </div>
+    <div style="overflow:auto"><table>
+      <thead><tr><th style="width:36px"><input type="checkbox" id="selAll"></th><th style="width:70px">ID</th><th>Question</th><th style="width:150px">Topic</th><th style="width:80px">Marks</th><th style="width:120px">Bloom's</th><th style="width:90px">Difficulty</th></tr></thead>
+      <tbody id="bankBody"></tbody></table></div>
+    <div class="empty hide" id="bankEmpty"><h3>No questions</h3><p>Add questions, upload a CSV or generate them from topics.</p></div>
+    <div class="pager"><span class="small muted" id="pgInfo"></span><div class="row" style="gap:6px;flex:0 0 auto"><span class="small muted" id="dirty"></span><button class="btn sm" id="prev">Prev</button><button class="btn sm" id="next">Next</button></div></div>
+  </div>
+</section>
+
+<!-- ANALYTICS -->
+<section class="view" id="v-analytics"><div id="anBody"></div></section>
+
+</div></div></div>
+<div id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const LEVELS=["Remember","Understand","Apply","Analyze","Evaluate","Create"], DIFFS=["Easy","Medium","Hard"];
+const LC={Remember:"#3b82f6",Understand:"#14b8a6",Apply:"#22c55e",Analyze:"#eab308",Evaluate:"#f97316",Create:"#a855f7"};
+const DC={Easy:"#22c55e",Medium:"#eab308",Hard:"#ef4444"};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct=x=>(x*100).toFixed(1)+"%";
+let bank=[], rows=[], dirty=false, sel=new Set(), page=1, PS=12, paper=null, analytics=null, diff="Mixed", method="templates", source="sample";
+let levelsSel=new Set(LEVELS), mode="auto", picked=new Set();
+const TITLES={dashboard:["Dashboard","Overview of your question bank and recent papers"],generate:["Generate Paper","Build a balanced paper from your constraints"],bank:["Question Bank","Add, edit and organise questions"],analytics:["Classifier Analytics","How well the rule-based Bloom's classifier performs"]};
+
+// ---------- helpers ----------
+function toast(msg,kind){const d=document.createElement("div");if(kind)d.className=kind;d.textContent=msg;$("#toast").append(d);setTimeout(()=>d.remove(),4500)}
+async function api(url,body,blob){
+  const fd=body instanceof FormData;
+  const r=await fetch(url,{method:"POST",headers:fd?{}:{"Content-Type":"application/json"},body:fd?body:JSON.stringify(body||{})});
+  if(blob){if(!r.ok){toast((await r.json()).error||"Failed","err");return null}return r.blob()}
+  const j=await r.json();
+  if(!r.ok||(j.error&&!j.bank)){toast(j.error||"Something went wrong","err");return null}
+  return j}
+function busy(b,on,t){if(on){b._h=b.innerHTML;b.innerHTML='<span class="spin"></span>'+t;b.disabled=true}else{b.innerHTML=b._h;b.disabled=false}}
+const lvPill=(l,stale)=>`<span class="pill" style="background:${LC[l]};${stale?"opacity:.5":""}">${l}</span>`;
+const dfTag=d=>`<span class="small" style="color:${DC[d]};font-weight:600"><span class="dot" style="background:${DC[d]}"></span> ${d}</span>`;
+const seg=(id,attr,cb)=>$(id).onclick=e=>{const b=e.target.closest("button");if(!b)return;$$(id+" button").forEach(x=>x.classList.toggle("on",x===b));cb(b.dataset[attr])};
+const count=(arr,f)=>arr.reduce((a,x)=>(a[f(x)]=(a[f(x)]||0)+1,a),{});
+
+// theme
+const SUN='<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON='<svg class="i" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>';
+function setTheme(t){document.documentElement.dataset.theme=t;$("#theme").innerHTML=t==="dark"?SUN:MOON;try{localStorage.qpTheme=t}catch(e){}}
+setTheme((()=>{try{return localStorage.qpTheme}catch(e){}})()||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light"));
+$("#theme").onclick=()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");
+
+// navigation
+function go(v){
+  $$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));
+  $$("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
+  $("#pageTitle").textContent=TITLES[v][0];$("#pageSub").textContent=TITLES[v][1];
+  if(v==="analytics")drawAnalytics();window.scrollTo(0,0)}
+$("#nav").onclick=e=>{const b=e.target.closest("button");if(b)go(b.dataset.v)};
+document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(g)go(g.dataset.go)});
+
+// ---------- charts ----------
+function donut(parts,centerTop,centerBottom){
+  const total=parts.reduce((a,p)=>a+p.value,0), C=2*Math.PI*40;let off=0;
+  const segs=total?parts.filter(p=>p.value>0).map(p=>{const len=p.value/total*C;const s=`<circle r="40" cx="60" cy="60" fill="none" stroke="${p.color}" stroke-width="16" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 60 60)"/>`;off+=len;return s}).join(""):"";
+  const svg=`<svg viewBox="0 0 120 120" class="donut"><circle r="40" cx="60" cy="60" fill="none" stroke="var(--border)" stroke-width="16"/>${segs}<text x="60" y="61" text-anchor="middle" class="dn">${centerTop}</text><text x="60" y="73" text-anchor="middle" class="dl">${centerBottom}</text></svg>`;
+  const legend=`<div class="legend">${parts.map(p=>`<div><span class="dot" style="background:${p.color}"></span>${esc(p.label)}<span class="n">${p.value}</span><span class="pc">${total?Math.round(p.value/total*100):0}%</span></div>`).join("")}</div>`;
+  return `<div class="donutwrap">${svg}${legend}</div>`}
+function hbars(items,color){
+  const mx=Math.max(1,...items.map(i=>i.value));
+  return items.map(i=>`<div class="hb"><span class="nm" title="${esc(i.label)}">${esc(i.label)}</span><div class="t"><div class="f" style="width:${i.value/mx*100}%;background:${i.color||color}"></div></div><span class="c">${i.value}</span></div>`).join("")||'<p class="muted small">No data</p>'}
+function columns(items){
+  const mx=Math.max(1,...items.map(i=>i.value));
+  return `<div class="cols">${items.map(i=>`<div class="col"><span style="font-weight:600">${i.value}</span><div class="bar" style="height:${i.value/mx*85}%"></div><span class="muted">${esc(i.label)}</span></div>`).join("")}</div>`}
+function stack(items){
+  const t=items.reduce((a,i)=>a+i.value,0)||1;
+  return `<div class="stack">${items.map(i=>`<div title="${i.label}: ${i.value}" style="width:${i.value/t*100}%;background:${i.color}"></div>`).join("")}</div>
+   <div class="row small" style="gap:14px;justify-content:flex-start">${items.map(i=>`<span style="flex:none"><span class="dot" style="background:${i.color}"></span> ${i.label} <b>${i.value}</b></span>`).join("")}</div>`}
+
+// ---------- dashboard ----------
+function drawDashboard(){
+  const topics=count(bank,q=>q.topic), nT=Object.keys(topics).length;
+  const avg=bank.length?(bank.reduce((a,q)=>a+q.marks,0)/bank.length).toFixed(1):"0";
+  const acc=analytics&&analytics.labeled?pct(analytics.accuracy):"n/a";
+  const k=(a,b,c,s)=>`<div class="card kpi"><div class="k">${a}</div><div class="v">${b}</div><div class="s">${c}</div></div>`;
+  $("#kpis").innerHTML=k("Questions",bank.length,"in the current bank")+k("Topics",nT,"distinct topics")+k("Average marks",avg,"per question")
+    +k("Classifier accuracy",acc,analytics&&analytics.labeled?analytics.labeled+" labelled questions":"needs labelled questions");
+  const lv=count(bank,q=>q.level);
+  $("#dLevels").innerHTML=bank.length?donut(LEVELS.map(l=>({label:l,value:lv[l]||0,color:LC[l]})),bank.length,"questions"):'<p class="muted small">No questions yet</p>';
+  $("#dTopics").innerHTML=hbars(Object.entries(topics).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([l,v])=>({label:l,value:v})),"var(--accent)");
+  const mk=count(bank,q=>q.marks), df=count(bank,q=>q.difficulty);
+  $("#dMarks").innerHTML=(bank.length?columns(Object.keys(mk).map(Number).sort((a,b)=>a-b).map(m=>({label:m+"m",value:mk[m]}))):'')
+    +'<div style="margin-top:16px" class="small muted">Difficulty split</div>'+stack(DIFFS.map(d=>({label:d,value:df[d]||0,color:DC[d]})));
+  drawHistory()}
+function history(){try{return JSON.parse(localStorage.qpHist||"[]")}catch(e){return[]}}
+function drawHistory(){
+  const h=history();
+  $("#hist").innerHTML=h.length?h.map((p,i)=>`<div class="hist"><div style="flex:1"><b>${esc(p.title)}</b> <span class="muted">· ${esc(p.subject)}</span>
+    <div class="small muted">${new Date(p.t).toLocaleString()} · ${p.count} questions · ${p.total} marks · ${p.cfg.mode==="manual"?"hand-picked":p.cfg.difficulty+" · seed "+p.cfg.seed}</div></div>
+    <button class="btn sm" data-rec="${i}">Re-create</button></div>`).join(""):'<p class="muted small">Papers you generate will appear here.</p>'}
+$("#hist").onclick=async e=>{const b=e.target.closest("[data-rec]");if(!b)return;const p=history()[+b.dataset.rec];setConfig(p.cfg,p);go("generate");await generate($("#genBtn"))};
+$("#clearHist").onclick=()=>{try{localStorage.qpHist="[]"}catch(e){}drawHistory()};
+
+// ---------- bank ----------
+function setBank(b){
+  bank=b;rows=b.map(q=>({...q}));dirty=false;sel.clear();page=1;picked.clear();
+  $("#sbCount").textContent=b.length;$("#sbSrc").textContent={sample:"Source: sample bank",upload:"Source: uploaded CSV",topics:"Source: generated from topics"}[source]||"";
+  const topics=[...new Set(b.map(q=>q.topic))].sort();
+  $("#topicList").innerHTML=topics.map(t=>`<option value="${esc(t)}">`).join("");
+  const cur=$("#bt").value;$("#bt").innerHTML='<option value="">All topics</option>'+topics.map(t=>`<option>${esc(t)}</option>`).join("");$("#bt").value=topics.includes(cur)?cur:"";
+  const cp=$("#pt").value;$("#pt").innerHTML='<option value="">All topics</option>'+topics.map(t=>`<option>${esc(t)}</option>`).join("");$("#pt").value=topics.includes(cp)?cp:"";
+  drawChips();drawBank();drawPick();drawDashboard();refreshAnalytics()}
+function filtered(){
+  const s=$("#bq").value.trim().toLowerCase(),lv=$("#bl").value,tp=$("#bt").value;
+  return rows.filter(r=>(!s||r.question.toLowerCase().includes(s)||r.topic.toLowerCase().includes(s))&&(!lv||r.level===lv)&&(!tp||r.topic===tp))}
+function drawBank(){
+  const f=filtered(),pages=Math.max(1,Math.ceil(f.length/PS));if(page>pages)page=pages;
+  const slice=f.slice((page-1)*PS,page*PS);
+  $("#bankBody").innerHTML=slice.map(r=>`<tr data-id="${r.id}"><td><input type="checkbox" class="ck" ${sel.has(r.id)?"checked":""}></td><td class="muted small">${r.id}</td>
+    <td><input type="text" class="eq" value="${esc(r.question)}"></td><td><input type="text" class="et" value="${esc(r.topic)}"></td>
+    <td><input type="number" class="em" min="1" max="50" value="${r.marks}"></td><td>${lvPill(r.level,r.stale)}</td><td>${dfTag(r.difficulty)}</td></tr>`).join("");
+  $("#bankEmpty").classList.toggle("hide",f.length>0);
+  $("#pgInfo").textContent=f.length?`Showing ${(page-1)*PS+1}-${Math.min(page*PS,f.length)} of ${f.length}`:"0 questions";
+  $("#prev").disabled=page<=1;$("#next").disabled=page>=pages;
+  $("#dirty").textContent=dirty?"Unsaved changes":"";
+  $("#delSel").classList.toggle("hide",!sel.size);$("#delSel").textContent=`Delete selected (${sel.size})`;
+  $("#useSel").classList.toggle("hide",!sel.size);$("#useSel").textContent=`Use selected in paper (${sel.size})`;
+  $("#selAll").checked=slice.length>0&&slice.every(r=>sel.has(r.id))}
+["bq","bl","bt"].forEach(id=>$("#"+id).oninput=()=>{page=1;drawBank()});
+$("#prev").onclick=()=>{page--;drawBank()};$("#next").onclick=()=>{page++;drawBank()};
+$("#bankBody").addEventListener("input",e=>{
+  const tr=e.target.closest("tr");if(!tr)return;const r=rows.find(x=>x.id===tr.dataset.id);if(!r)return;
+  if(e.target.classList.contains("eq")){r.question=e.target.value;r.stale=true}
+  else if(e.target.classList.contains("et"))r.topic=e.target.value;
+  else if(e.target.classList.contains("em"))r.marks=+e.target.value;
+  else if(e.target.classList.contains("ck")){e.target.checked?sel.add(r.id):sel.delete(r.id);drawBank();return}
+  dirty=true;$("#dirty").textContent="Unsaved changes"});
+$("#selAll").onchange=e=>{const f=filtered().slice((page-1)*PS,page*PS);f.forEach(r=>e.target.checked?sel.add(r.id):sel.delete(r.id));drawBank()};
+$("#delSel").onclick=()=>{rows=rows.filter(r=>!sel.has(r.id));sel.clear();dirty=true;drawBank()};
+$("#saveBank").onclick=async e=>{
+  const b=e.currentTarget;busy(b,1,"Saving");
+  const j=await api("/api/bank/save",{rows:rows.map(r=>({id:r.id,question:r.question,topic:r.topic,marks:r.marks}))});busy(b,0);
+  if(j){setBank(j.bank);resetPaper();toast("Question bank saved")}};
+$("#addOpen").onclick=()=>$("#addCard").classList.remove("hide");$("#addClose").onclick=()=>$("#addCard").classList.add("hide");
+$("#addBtn").onclick=async()=>{
+  const j=await api("/api/bank/add",{text:$("#addText").value,topic:$("#addTopic").value,marks:$("#addMarks").value});
+  if(j){setBank(j.bank);$("#addText").value="";toast(`Added ${j.added} question(s) under '${j.topic}'`+(j.skipped?` (${j.skipped} duplicates skipped)`:""))}};
+seg("#srcSeg","s",async s=>{source=s;$("#p-upload").classList.toggle("hide",s!=="upload");$("#p-topics").classList.toggle("hide",s!=="topics");
+  const j=await api("/api/source",{source:s});if(j){setBank(j.bank);resetPaper();if(j.error)toast(j.error,"err")}});
+seg("#methSeg","m",m=>{method=m;$("#aiBox").classList.toggle("hide",m!=="ai")});
+$("#perLevel").oninput=e=>$("#plv").textContent=e.target.value;
+$("#file").onchange=async e=>{const f=e.target.files[0];if(!f)return;const fd=new FormData();fd.append("file",f);
+  const j=await api("/api/upload",fd);if(j){source="upload";setBank(j.bank);resetPaper();toast(`Loaded ${j.bank.length} questions`)}};
+$("#genTopics").onclick=async e=>{const b=e.currentTarget;busy(b,1,"Generating");
+  const j=await api("/api/topics/generate",{topics:$("#topics").value,course:$("#course").value,method,per_level:$("#perLevel").value,api_key:$("#key").value,model:$("#model").value});
+  busy(b,0);if(j){setBank(j.bank);resetPaper();toast(`Generated ${j.added} question(s) for ${j.topics} topic(s)`+(j.skipped?` (${j.skipped} duplicates skipped)`:""))}};
+$("#bl").innerHTML='<option value="">All levels</option>'+LEVELS.map(l=>`<option>${l}</option>`).join("");
+
+// ---------- generate ----------
+function drawChips(){
+  const c=count(bank,q=>q.level);
+  $("#levelChips").innerHTML=LEVELS.map(l=>`<button class="chip ${levelsSel.has(l)?"on":""}" data-l="${l}"><span class="dot" style="background:${LC[l]}"></span>${l} <small>${c[l]||0}</small></button>`).join("");
+  syncN()}
+$("#levelChips").onclick=e=>{const b=e.target.closest(".chip");if(!b)return;const l=b.dataset.l;levelsSel.has(l)?levelsSel.delete(l):levelsSel.add(l);drawChips()};
+function syncN(){const c=bank.filter(q=>levelsSel.has(q.level)).length,n=$("#n");n.max=Math.max(1,c);
+  if(+n.value>c&&c>0)n.value=c;$("#nAvail").textContent=`${c} question${c===1?"":"s"} available for the selected levels`}
+$("#n").onchange=syncN;
+seg("#diffSeg","d",d=>diff=d);
+$("#shuffle").onclick=()=>$("#seed").value=Math.floor(Math.random()*9999);
+const cfg=()=>mode==="manual"
+  ?{mode:"manual",ids:[...picked],sections:$("#sections").checked}
+  :{mode:"auto",levels:[...levelsSel],n:+$("#n").value,marks:+$("#marks").value,difficulty:diff,seed:+$("#seed").value,sections:$("#sections").checked};
+function setConfig(c,p){
+  $("#sections").checked=c.sections;
+  if(p){$("#title").value=p.title;$("#subject").value=p.subject}
+  if(c.mode==="manual"){picked=new Set(c.ids.filter(id=>bank.some(q=>q.id===id)));setMode("manual");return}
+  setMode("auto");
+  levelsSel=new Set(c.levels);$("#marks").value=c.marks;$("#seed").value=c.seed;
+  diff=c.difficulty;$$("#diffSeg button").forEach(b=>b.classList.toggle("on",b.dataset.d===diff));
+  drawChips();$("#n").value=c.n;syncN()}
+async function generate(btn){
+  const c=cfg();
+  if(c.mode==="manual"){if(!c.ids.length){toast("Tick at least one question first","err");return}}
+  else if(!levelsSel.size){toast("Select at least one Bloom's level","err");return}
+  busy(btn,1,"Generating");const j=await api(c.mode==="manual"?"/api/paper/manual":"/api/paper/generate",c);busy(btn,0);
+  if(!j)return;paper=j;drawPaper();
+  const h=history();h.unshift({t:Date.now(),title:$("#title").value,subject:$("#subject").value,total:j.total,count:j.count,cfg:c});
+  try{localStorage.qpHist=JSON.stringify(h.slice(0,8))}catch(e){}drawHistory()}
+$("#genBtn").onclick=e=>generate(e.currentTarget);$("#regen").onclick=e=>generate(e.currentTarget);
+function resetPaper(){paper=null;$("#paperView").classList.add("hide");$("#paperEmpty").classList.remove("hide")}
+$("#sections").onchange=async()=>{if(!paper)return;const j=await api("/api/paper/layout",{sections:$("#sections").checked});if(j){paper=j;drawPaper()}};
+["title","subject","duration"].forEach(id=>$("#"+id).oninput=()=>{if(paper)drawPaper()});
+$("#sheet").onclick=async e=>{const b=e.target.closest("[data-swap]");if(!b)return;
+  const j=await api("/api/paper/swap",{id:b.dataset.swap,sections:$("#sections").checked});if(j){paper=j;drawPaper();if(j.msg)toast(j.msg,"warn")}};
+function drawPaper(){
+  $("#paperEmpty").classList.add("hide");$("#paperView").classList.remove("hide");
+  const items=paper.groups.flatMap(g=>g.items), lv=count(items,q=>q.level), df=count(items,q=>q.difficulty), tp=count(items,q=>q.topic);
+  const k=(a,b,c,cls)=>`<div class="card kpi ${cls||""}"><div class="k">${a}</div><div class="v">${b}</div><div class="s">${c}</div></div>`;
+  $("#stats").innerHTML=k("Total marks",paper.total,paper.manual?"sum of your picks":"of target "+paper.target)+k("Questions",paper.count,"in this paper")
+    +(paper.manual?k("Selection","Hand-picked","chosen by you")
+      :k("Target match",paper.exact?"Exact":"Closest",paper.exact?"marks add up exactly":"exact total not possible",paper.exact?"ok":"warn"))
+    +k("Levels covered",Object.keys(lv).length+" / 6","Bloom's taxonomy");
+  $("#sheet").innerHTML=`<h2>${esc($("#title").value)}</h2><div class="sub">${esc($("#subject").value)}</div>
+   <div class="meta"><span>Time: ${esc($("#duration").value)}</span><span>Total Marks: ${paper.total}</span></div>`+
+   paper.groups.map(g=>(g.heading?`<div class="sec-t">${esc(g.heading)}</div>`:"")+g.items.map(q=>`
+    <div class="q"><div class="no">Q${q.no}.</div>
+     <div><div>${esc(q.question)}</div><div class="tags">${lvPill(q.level)}${dfTag(q.difficulty)}<span>${esc(q.topic)}</span></div></div>
+     <div class="mk">[${q.marks}]<div class="act noprint"><button class="btn sm" data-swap="${q.id}" style="margin-top:6px">Swap</button></div></div></div>`).join("")).join("");
+  $("#pCharts").innerHTML=
+    `<div class="card"><div class="hd">Bloom's levels</div><div class="bd">${hbars(LEVELS.map(l=>({label:l,value:lv[l]||0,color:LC[l]})))}</div></div>`+
+    `<div class="card"><div class="hd">Difficulty</div><div class="bd">${hbars(DIFFS.map(d=>({label:d,value:df[d]||0,color:DC[d]})))}</div></div>`+
+    `<div class="card"><div class="hd">Topics</div><div class="bd">${hbars(Object.entries(tp).map(([l,v])=>({label:l,value:v})),"var(--accent)")}</div></div>`}
+$$("[data-x]").forEach(b=>b.onclick=async()=>{
+  const blob=await api("/api/export/"+b.dataset.x,{title:$("#title").value,subject:$("#subject").value,duration:$("#duration").value,sections:$("#sections").checked},true);
+  if(!blob)return;const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="question_paper."+b.dataset.x;a.click();URL.revokeObjectURL(a.href)});
+
+// ---------- manual pick ----------
+function setMode(m){
+  mode=m;$$("#modeSeg button").forEach(b=>b.classList.toggle("on",b.dataset.mode===m));
+  $("#autoBox").classList.toggle("hide",m!=="auto");$("#manualNote").classList.toggle("hide",m!=="manual");
+  $("#pickCard").classList.toggle("hide",m!=="manual");drawPick()}
+seg("#modeSeg","mode",setMode);
+function pickFiltered(){
+  const s=$("#pq").value.trim().toLowerCase(),lv=$("#pl").value,tp=$("#pt").value;
+  return bank.filter(q=>(!s||q.question.toLowerCase().includes(s)||q.topic.toLowerCase().includes(s))&&(!lv||q.level===lv)&&(!tp||q.topic===tp))}
+function pickSummary(){
+  const ms=bank.filter(q=>picked.has(q.id)).reduce((a,q)=>a+q.marks,0);
+  $("#pickInfo").textContent=`${picked.size} selected · ${ms} marks`;
+  $("#genBtn").textContent=mode==="manual"?`Build paper from ${picked.size} selected`:"Generate paper"}
+function drawPick(){
+  const f=pickFiltered();
+  $("#pickList").innerHTML=f.length?f.map(q=>`<label class="pk"><input type="checkbox" data-id="${q.id}" ${picked.has(q.id)?"checked":""}>
+    <span style="flex:1">${esc(q.question)}</span>${lvPill(q.level)}<span class="small muted" style="width:90px">${esc(q.topic)}</span><b style="width:34px;text-align:right">${q.marks}</b></label>`).join("")
+    :'<div class="empty"><p>No questions match.</p></div>';
+  pickSummary()}
+$("#pickList").onchange=e=>{const c=e.target.closest("input[data-id]");if(!c)return;c.checked?picked.add(c.dataset.id):picked.delete(c.dataset.id);pickSummary()};
+$("#pickAll").onclick=()=>{pickFiltered().forEach(q=>picked.add(q.id));drawPick()};
+$("#pickNone").onclick=()=>{picked.clear();drawPick()};
+["pq","pl","pt"].forEach(id=>$("#"+id).oninput=drawPick);
+$("#pl").innerHTML='<option value="">All levels</option>'+LEVELS.map(l=>`<option>${l}</option>`).join("");
+$("#useSel").onclick=()=>{picked=new Set(sel);setMode("manual");go("generate");toast(`${picked.size} question(s) added to your selection`)};
+
+// ---------- analytics ----------
+async function refreshAnalytics(){try{analytics=await (await fetch("/api/analytics")).json()}catch(e){analytics=null}drawDashboard();if($("#v-analytics").classList.contains("on"))drawAnalytics()}
+function drawAnalytics(){
+  const a=analytics,el=$("#anBody");
+  if(!a||!a.labeled){el.innerHTML=`<div class="card"><div class="empty"><h3>No labelled questions</h3><p>The classifier is evaluated against questions that have a ground-truth Bloom's level.<br>Use the sample bank, or generate questions from topics (they are stored with their level).</p></div></div>`;return}
+  const k=(x,y,z)=>`<div class="card kpi"><div class="k">${x}</div><div class="v">${y}</div><div class="s">${z}</div></div>`;
+  const base=a.baseline?k("ML baseline (TF-IDF + LogReg)",pct(a.baseline.accuracy),a.baseline.folds+"-fold cross-validation"):k("ML baseline","n/a","needs at least 2 questions per level");
+  const rb=a.accuracy,delta=a.baseline?(rb-a.baseline.accuracy)*100:null;
+  const cmMax=a.confusion.map(r=>r.reduce((x,y)=>x+y,0)||1);
+  el.innerHTML=`<div class="grid g3 mb">${k("Rule-based accuracy",pct(rb),a.labeled+" labelled questions")}${base}
+    ${k("Rule-based vs baseline",delta===null?"n/a":(delta>=0?"+":"")+delta.toFixed(1)+" pts",delta===null?"":delta>=0?"rule-based is ahead":"baseline is ahead")}</div>
+   <div class="grid g2">
+   <div class="card"><div class="hd">Per-level precision, recall and F1</div><div style="overflow:auto"><table>
+     <thead><tr><th>Level</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead>
+     <tbody>${a.per_class.map(c=>`<tr><td>${lvPill(c.level)}</td>
+       <td>${pct(c.precision)}</td><td>${pct(c.recall)}</td>
+       <td><div class="row" style="gap:8px"><span style="flex:none;width:48px">${pct(c.f1)}</span><div class="bar-sm"><i style="width:${c.f1*100}%"></i></div></div></td><td>${c.support}</td></tr>`).join("")}</tbody></table></div></div>
+   <div class="card"><div class="hd">Confusion matrix <span class="muted small" style="font-weight:400">rows = actual, columns = predicted</span></div><div class="bd">
+     <div class="cm" style="grid-template-columns:90px repeat(6,1fr)">
+       <div class="h"></div>${LEVELS.map(l=>`<div class="h" title="${l}">${l.slice(0,3)}</div>`).join("")}
+       ${a.confusion.map((r,i)=>`<div class="h" style="text-align:right">${LEVELS[i]}</div>`+r.map((v,j)=>
+         `<div style="background:${v?`color-mix(in srgb,${i===j?"var(--ok)":"var(--bad)"} ${Math.round(v/cmMax[i]*70)+8}%,transparent)`:"transparent"};font-weight:${i===j?700:500}">${v||""}</div>`).join("")).join("")}
+     </div></div></div></div>`}
+
+// ---------- init ----------
+fetch("/api/bank").then(r=>r.json()).then(j=>{source=j.source||"sample";setBank(j.bank)});
+go("dashboard");
+</script>
+</body>
+</html>
