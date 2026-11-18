@@ -1,4 +1,7 @@
-"__pycache__/" 
-"venv/" 
-"*.db" 
-"uploads/" 
+venv/
+__pycache__/
+*.pyc
+*.db
+uploads/
+.env
+

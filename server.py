@@ -1,7 +1,6 @@
 """Flask backend for the Question Paper Generator (replaces the Streamlit UI).
-Run:  pip install flask pandas reportlab python-docx requests scikit-learn
-      python server.py        ->  http://127.0.0.1:5000
-Reuses qpg.py (classifier + generator) and export.py (PDF / Word) unchanged.
+Run:  python server.py        ->  http://127.0.0.1:5000
+Storage: SQLite (qpg.db). Bloom labels: LLM (cached in the DB) with rule-based fallback.
 """
 import io, json, os, random, re
 from collections import Counter
@@ -11,13 +10,15 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from qpg import LEVELS, DIFFICULTIES, classify, add_difficulty, generate_by_constraints
 from export import make_pdf, make_docx
+from db import init_db, load_raw, save_raw
+from llm_classifier import classify_all, DEFAULT_MODEL
 
 CSV = "questions.csv"
-BASE_COLS = ["id", "question", "topic", "marks", "true_bloom_level"]
+BASE_COLS = ["id", "question", "topic", "marks", "true_bloom_level",
+             "bloom_level", "bloom_confidence", "bloom_source"]
 SECTIONS = ["Section A - Short Answer", "Section B - Medium Answer", "Section C - Long Answer"]
 LEVEL_MARKS = {"Remember": 2, "Understand": 3, "Apply": 5, "Analyze": 5, "Evaluate": 6, "Create": 8}
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
 TEMPLATES = {
     "Remember":   ["Define {topic}.", "List the key features of {topic}.", "State any two applications of {topic}."],
     "Understand": ["Explain the concept of {topic} with an example.", "Describe how {topic} works.",
@@ -67,24 +68,33 @@ def normalize(raw):
     raw["marks"] = pd.to_numeric(raw["marks"], errors="coerce").fillna(5).astype(int).clip(1, 50)
     if "true_bloom_level" not in raw.columns:
         raw["true_bloom_level"] = None
+    for c in ("bloom_level", "bloom_confidence", "bloom_source"):
+        if c not in raw.columns:
+            raw[c] = None
     raw["id"] = [f"Q{i:03d}" for i in range(1, len(raw) + 1)]
     return raw[BASE_COLS]
 
 
 def persist():
-    if S["source"] == "sample":
-        S["raw"][BASE_COLS].to_csv(CSV, index=False)
+    save_raw(S["raw"], S["source"])
 
 
 def prepare(raw):
     df = raw.copy()
-    df["predicted_level"] = df.question.apply(classify) if len(df) else []
-    return add_difficulty(df) if len(df) else df.assign(difficulty=[])
+    if not len(df):
+        return df.assign(predicted_level=[], difficulty=[])
+    rule = df.question.apply(classify)
+    # use the cached LLM label when there is one, else the rule-based label
+    df["predicted_level"] = df["bloom_level"].where(df["bloom_level"].isin(LEVELS), rule)
+    return add_difficulty(df)
 
 
 def clean(rec):
+    conf, src = rec.get("bloom_confidence"), rec.get("bloom_source")
     return {"id": rec["id"], "question": rec["question"], "topic": rec["topic"], "marks": int(rec["marks"]),
-            "level": rec["predicted_level"], "difficulty": rec["difficulty"]}
+            "level": rec["predicted_level"], "difficulty": rec["difficulty"],
+            "confidence": None if conf is None or pd.isna(conf) else round(float(conf), 2),
+            "source": None if src is None or pd.isna(src) else src}
 
 
 def bank_payload():
@@ -104,7 +114,8 @@ def add_questions(items):
     if fresh:
         nums = [int(i[1:]) for i in raw.id if str(i)[1:].isdigit()]
         start = (max(nums) + 1) if nums else 1
-        rows = pd.DataFrame([{"id": f"Q{start + k:03d}", **it} for k, it in enumerate(fresh)])[BASE_COLS]
+        rows = pd.DataFrame([{"id": f"Q{start + k:03d}", "bloom_level": None, "bloom_confidence": None,
+                              "bloom_source": None, **it} for k, it in enumerate(fresh)])[BASE_COLS]
         S["raw"] = rows if raw.empty else pd.concat([raw, rows], ignore_index=True)
         S["raw"]["marks"] = S["raw"]["marks"].astype(int)
         persist()
@@ -128,7 +139,8 @@ def ai_questions(topic, k, api_key, model, course):
         "model": model, "temperature": 0.7, "response_format": {"type": "json_object"},
         "messages": [{"role": "system", "content": "You are an expert exam-paper setter. Reply with JSON only."},
                      {"role": "user", "content": prompt}]})
-    r.raise_for_status()
+    if not r.ok:
+        raise RuntimeError(f"Groq {r.status_code}: {r.text[:300]}")
     data = json.loads(r.json()["choices"][0]["message"]["content"])
     out = []
     for item in data.get("questions", []):
@@ -138,6 +150,26 @@ def ai_questions(topic, k, api_key, model, course):
     if not out:
         raise ValueError("the AI returned no usable questions")
     return out
+
+
+def llm_label_missing(api_key, force=False, model=DEFAULT_MODEL):
+    """Label questions with the LLM and cache the result in the DB. Returns (done, failed)."""
+    raw = S["raw"]
+    todo = raw if force else raw[raw.bloom_level.isna()]
+    items = [{"id": r.id, "text": r.question} for r in todo.itertuples()]
+    if not items:
+        return 0, 0
+    res = classify_all(items, rule_fallback=classify, api_key=api_key, model=model)
+    done = 0
+    for qid, r in res.items():
+        if r["source"] == "llm":          # never cache rule-based fallbacks
+            m = raw.id == qid
+            raw.loc[m, "bloom_level"] = r["level"]
+            raw.loc[m, "bloom_confidence"] = r["confidence"]
+            raw.loc[m, "bloom_source"] = "llm"
+            done += 1
+    persist()
+    return done, len(items) - done
 
 
 def paper_payload(sections_on=True):
@@ -181,10 +213,7 @@ def set_source():
     S.update(source=src, paper=[], pool=[], target=0)
     err = None
     try:
-        if src == "sample":
-            S["raw"] = normalize(pd.read_csv(CSV)) if os.path.exists(CSV) else pd.DataFrame(columns=BASE_COLS)
-        else:
-            S["raw"] = pd.DataFrame(columns=BASE_COLS)
+        S["raw"] = load_raw(src)
     except Exception as e:
         S["raw"], err = pd.DataFrame(columns=BASE_COLS), str(e)
     return jsonify(bank=bank_payload(), source=src, error=err)
@@ -202,6 +231,7 @@ def upload():
         except UnicodeDecodeError:
             df = pd.read_csv(io.BytesIO(data), encoding="latin-1")
         S.update(raw=normalize(df), source="upload", paper=[], pool=[], target=0)
+        persist()
     except Exception as e:
         return jsonify(error=f"Could not read the file: {e}"), 400
     return jsonify(bank=bank_payload(), source="upload")
@@ -242,17 +272,33 @@ def bank_save():
         q = str(r.get("question", "")).strip()
         if not q:
             continue
-        tb = None
+        keep = {"true_bloom_level": None, "bloom_level": None, "bloom_confidence": None, "bloom_source": None}
+        # unchanged questions keep their labels; edited ones are re-labelled
         if old is not None and r.get("id") in old.index and old.loc[r["id"], "question"] == q:
-            tb = old.loc[r["id"], "true_bloom_level"]
-            tb = None if pd.isna(tb) else tb
-        kept.append({"id": r.get("id", ""), "question": q, "topic": str(r.get("topic") or "General").strip() or "General",
-                     "marks": max(1, min(50, int(r.get("marks") or 5))), "true_bloom_level": tb})
+            for k in keep:
+                v = old.loc[r["id"], k]
+                keep[k] = None if pd.isna(v) else v
+        kept.append({"id": r.get("id", ""), "question": q,
+                     "topic": str(r.get("topic") or "General").strip() or "General",
+                     "marks": max(1, min(50, int(r.get("marks") or 5))), **keep})
     S["raw"] = pd.DataFrame(kept, columns=BASE_COLS) if kept else pd.DataFrame(columns=BASE_COLS)
     if kept:
         S["raw"]["id"] = [f"Q{i:03d}" for i in range(1, len(S["raw"]) + 1)]
     persist()
     return jsonify(bank=bank_payload())
+
+
+@app.post("/api/bank/classify")
+def bank_classify():
+    """Label questions with the LLM (only unlabelled ones unless force=true)."""
+    j = request.get_json(silent=True) or {}
+    key = j.get("api_key") or os.environ.get("GROQ_API_KEY", "")
+    if S["raw"].empty:
+        return jsonify(error="The question bank is empty."), 400
+    if not key:
+        return jsonify(error="Set GROQ_API_KEY or send api_key."), 400
+    done, failed = llm_label_missing(key, bool(j.get("force", False)), j.get("model") or DEFAULT_MODEL)
+    return jsonify(bank=bank_payload(), classified=done, failed=failed)
 
 
 @app.post("/api/topics/generate")
@@ -310,7 +356,7 @@ def paper_manual():
 
 @app.get("/api/analytics")
 def analytics():
-    """Evaluate the rule-based Bloom classifier on questions that have a ground-truth label."""
+    """Evaluate the Bloom classifier on questions that have a ground-truth label."""
     df = prepare(S["raw"])
     out = {"total": int(len(df)), "labeled": 0}
     if df.empty:
@@ -329,6 +375,7 @@ def analytics():
                    for l, a, b, c, d in zip(LEVELS, pr, rc, f1, sup)],
         confusion=confusion_matrix(y, p, labels=LEVELS).tolist(),
         levels=LEVELS)
+    out["rule_accuracy"] = float(accuracy_score(y, lab.question.apply(classify)))
     try:   # ML baseline: TF-IDF + logistic regression with cross-validation
         from sklearn.pipeline import make_pipeline
         from sklearn.feature_extraction.text import TfidfVectorizer
@@ -388,7 +435,15 @@ def export(fmt):
     return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True, download_name=name)
 
 
+def boot():
+    init_db()
+    if load_raw("sample").empty and os.path.exists(CSV):   # first run: seed the DB from the CSV
+        save_raw(normalize(pd.read_csv(CSV)), "sample")
+    S["raw"] = load_raw("sample")
+
+
 if __name__ == "__main__":
-    if os.path.exists(CSV):
-        S["raw"] = normalize(pd.read_csv(CSV))
+    boot()
     app.run(debug=True)
+
+    
