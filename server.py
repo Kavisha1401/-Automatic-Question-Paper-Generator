@@ -1,24 +1,25 @@
-"""Flask backend for the Question Paper Generator (replaces the Streamlit UI).
+"""Flask backend for the Question Paper Generator.
 Run:  python server.py        ->  http://127.0.0.1:5000
 Storage: SQLite (qpg.db). Bloom labels: LLM (cached in the DB) with rule-based fallback.
+Question types: mcq, fib, true_false, assertion_reason, short, long, image.
 """
-import io, json, os, random, re
+import io, json, os, random, re, uuid
 from collections import Counter
 
 import pandas as pd
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from qpg import LEVELS, DIFFICULTIES, classify, add_difficulty, generate_by_constraints
-from export import make_pdf, make_docx
-from db import init_db, load_raw, save_raw
+from export import make_pdf, make_docx, make_txt
+from db import init_db, load_raw, save_raw, COLS as BASE_COLS
 from llm_classifier import classify_all, DEFAULT_MODEL
+from qtypes import QTYPES, TYPE_ORDER, norm_type, expand_types, enrich, nn
 
 CSV = "questions.csv"
-BASE_COLS = ["id", "question", "topic", "marks", "true_bloom_level",
-             "bloom_level", "bloom_confidence", "bloom_source"]
 SECTIONS = ["Section A - Short Answer", "Section B - Medium Answer", "Section C - Long Answer"]
 LEVEL_MARKS = {"Remember": 2, "Understand": 3, "Apply": 5, "Analyze": 5, "Evaluate": 6, "Create": 8}
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+ALLOWED_IMG = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 TEMPLATES = {
     "Remember":   ["Define {topic}.", "List the key features of {topic}.", "State any two applications of {topic}."],
     "Understand": ["Explain the concept of {topic} with an example.", "Describe how {topic} works.",
@@ -34,17 +35,30 @@ TEMPLATES = {
                    "Develop an algorithm that makes use of {topic}.",
                    "Propose an improved variant of {topic} and explain your design."],
 }
-TEMPLATE_CSV = "question,topic,marks\nDefine a stack.,Stack,2\nExplain recursion with an example.,Recursion,5\n"
+TEMPLATE_CSV = ("question,topic,marks,type,option_a,option_b,option_c,option_d,answer\n"
+                "Define a stack.,Stack,2,short,,,,,\n"
+                "Which structure is LIFO?,Stack,1,mcq,Queue,Stack,Array,Heap,B\n")
 ALIASES = {"questions": "question", "question text": "question", "q": "question",
-           "unit": "topic", "chapter": "topic", "module": "topic", "mark": "marks", "score": "marks"}
+           "unit": "topic", "chapter": "topic", "module": "topic", "mark": "marks", "score": "marks",
+           "type": "qtype", "question type": "qtype", "question_type": "qtype",
+           "correct answer": "answer", "correct_answer": "answer", "key": "answer",
+           "image": "image_path", "image path": "image_path", "figure": "image_path",
+           "option a": "option_a", "option b": "option_b", "option c": "option_c", "option d": "option_d"}
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+UPLOAD_IMG_DIR = os.path.join(app.root_path, "uploads", "images")
+os.makedirs(UPLOAD_IMG_DIR, exist_ok=True)
 
 # single-user demo state
 S = {"raw": pd.DataFrame(columns=BASE_COLS), "source": "sample", "paper": [], "pool": [], "target": 0}
 
 
 # ---------- helpers ----------
+def qtype_of(q):
+    t = q.get("qtype")
+    return t if t in QTYPES else "short"
+
+
 def section_of(marks):
     return SECTIONS[0] if marks <= 3 else SECTIONS[1] if marks <= 5 else SECTIONS[2]
 
@@ -71,6 +85,7 @@ def normalize(raw):
     for c in ("bloom_level", "bloom_confidence", "bloom_source"):
         if c not in raw.columns:
             raw[c] = None
+    raw = enrich(raw)                      # question type, options, answer, image
     raw["id"] = [f"Q{i:03d}" for i in range(1, len(raw) + 1)]
     return raw[BASE_COLS]
 
@@ -86,15 +101,23 @@ def prepare(raw):
     rule = df.question.apply(classify)
     # use the cached LLM label when there is one, else the rule-based label
     df["predicted_level"] = df["bloom_level"].where(df["bloom_level"].isin(LEVELS), rule)
+    df["qtype"] = df["qtype"].where(df["qtype"].isin(list(QTYPES)), "short")
     return add_difficulty(df)
 
 
 def clean(rec):
-    conf, src = rec.get("bloom_confidence"), rec.get("bloom_source")
+    conf = rec.get("bloom_confidence")
+    conf = None if conf is None or pd.isna(conf) else round(float(conf), 2)
+    try:
+        opts = json.loads(rec["options"]) if nn(rec.get("options")) else []
+    except ValueError:
+        opts = []
+    img = nn(rec.get("image_path"))
     return {"id": rec["id"], "question": rec["question"], "topic": rec["topic"], "marks": int(rec["marks"]),
             "level": rec["predicted_level"], "difficulty": rec["difficulty"],
-            "confidence": None if conf is None or pd.isna(conf) else round(float(conf), 2),
-            "source": None if src is None or pd.isna(src) else src}
+            "confidence": conf, "source": nn(rec.get("bloom_source")),
+            "qtype": qtype_of(rec), "options": opts, "answer": nn(rec.get("answer")),
+            "image_path": img, "image_url": f"/{img}" if img else None}
 
 
 def bank_payload():
@@ -114,8 +137,9 @@ def add_questions(items):
     if fresh:
         nums = [int(i[1:]) for i in raw.id if str(i)[1:].isdigit()]
         start = (max(nums) + 1) if nums else 1
-        rows = pd.DataFrame([{"id": f"Q{start + k:03d}", "bloom_level": None, "bloom_confidence": None,
-                              "bloom_source": None, **it} for k, it in enumerate(fresh)])[BASE_COLS]
+        rows = pd.DataFrame([{**dict.fromkeys(BASE_COLS), "id": f"Q{start + k:03d}", **it}
+                             for k, it in enumerate(fresh)])
+        rows = enrich(rows)[BASE_COLS]
         S["raw"] = rows if raw.empty else pd.concat([raw, rows], ignore_index=True)
         S["raw"]["marks"] = S["raw"]["marks"].astype(int)
         persist()
@@ -152,11 +176,25 @@ def ai_questions(topic, k, api_key, model, course):
     return out
 
 
+def llm_text(r):
+    """Question text + options (+ image note) so the LLM sees the whole question."""
+    t = r.question
+    try:
+        opts = json.loads(r.options) if nn(r.options) else []
+    except ValueError:
+        opts = []
+    if opts:
+        t += "\nOptions: " + " | ".join(opts)
+    if nn(r.image_path):
+        t += "\n(The question includes an image.)"
+    return t
+
+
 def llm_label_missing(api_key, force=False, model=DEFAULT_MODEL):
     """Label questions with the LLM and cache the result in the DB. Returns (done, failed)."""
     raw = S["raw"]
     todo = raw if force else raw[raw.bloom_level.isna()]
-    items = [{"id": r.id, "text": r.question} for r in todo.itertuples()]
+    items = [{"id": r.id, "text": llm_text(r)} for r in todo.itertuples()]
     if not items:
         return 0, 0
     res = classify_all(items, rule_fallback=classify, api_key=api_key, model=model)
@@ -172,15 +210,23 @@ def llm_label_missing(api_key, force=False, model=DEFAULT_MODEL):
     return done, len(items) - done
 
 
-def paper_payload(sections_on=True):
+def paper_payload(sections_on=True, group_by="auto"):
+    """group_by: 'marks' | 'type' | 'auto' (by type when the paper mixes several types)."""
     paper = S["paper"]
-    order = (sorted(range(len(paper)), key=lambda i: (SECTIONS.index(section_of(paper[i]["marks"])), i))
-             if sections_on else list(range(len(paper))))
+    types = [t for t in TYPE_ORDER if t in {qtype_of(q) for q in paper}]
+    by_type = group_by == "type" or (group_by == "auto" and len(types) > 1)
+    if by_type:
+        rank = lambda q: types.index(qtype_of(q))
+        heading = lambda q: f"Section {chr(65 + types.index(qtype_of(q)))} - {QTYPES[qtype_of(q)]}"
+    else:
+        rank = lambda q: SECTIONS.index(section_of(q["marks"]))
+        heading = lambda q: section_of(q["marks"])
+    order = sorted(range(len(paper)), key=lambda i: (rank(paper[i]), i)) if sections_on else list(range(len(paper)))
     groups, last = [], "__start__"
     qno = 0
     for i in order:
         q = paper[i]
-        sec = section_of(q["marks"]) if sections_on else None
+        sec = heading(q) if sections_on else None
         if sec != last:
             groups.append({"heading": sec, "items": []})
             last = sec
@@ -191,9 +237,9 @@ def paper_payload(sections_on=True):
             "count": len(paper), "manual": S.get("manual", False)}
 
 
-def groups_for_export(sections_on):
-    p = paper_payload(sections_on)
-    return [(g["heading"], [(it["no"], it["question"], it["marks"]) for it in g["items"]]) for g in p["groups"]], p["total"]
+def groups_for_export(sections_on, group_by="auto"):
+    p = paper_payload(sections_on, group_by)
+    return [(g["heading"], g["items"]) for g in p["groups"]], p["total"]
 
 
 # ---------- routes ----------
@@ -202,9 +248,15 @@ def index():
     return send_from_directory("static", "index.html")
 
 
+@app.get("/uploads/<path:name>")
+def uploaded_file(name):
+    return send_from_directory(os.path.join(app.root_path, "uploads"), name)
+
+
 @app.get("/api/bank")
 def get_bank():
-    return jsonify(bank=bank_payload(), source=S["source"], levels=LEVELS, difficulties=DIFFICULTIES)
+    return jsonify(bank=bank_payload(), source=S["source"], levels=LEVELS, difficulties=DIFFICULTIES,
+                   qtypes=[{"id": k, "label": v} for k, v in QTYPES.items()])
 
 
 @app.post("/api/source")
@@ -263,6 +315,42 @@ def bank_add():
     return jsonify(bank=bank_payload(), added=added, skipped=skipped, detected=detected, topic=topic)
 
 
+@app.post("/api/question/add")
+def question_add():
+    """Add ONE question with full details: type, options, answer."""
+    j = request.json
+    q = str(j.get("question", "")).strip()
+    if not q:
+        return jsonify(error="Type the question text."), 400
+    opts = [str(o).strip() for o in (j.get("options") or []) if str(o).strip()]
+    item = {"question": q, "topic": (j.get("topic") or "General").strip() or "General",
+            "marks": max(1, min(50, int(j.get("marks", 1)))), "true_bloom_level": None,
+            "qtype": norm_type(j.get("qtype")), "options": json.dumps(opts) if opts else None,
+            "answer": nn(j.get("answer"))}
+    added, skipped = add_questions([item])
+    new_id = S["raw"].id.iloc[-1] if added else None
+    return jsonify(bank=bank_payload(), added=added, skipped=skipped, id=new_id)
+
+
+@app.post("/api/question/image")
+def question_image():
+    """Attach an image to a question: multipart form with 'id' and 'file'."""
+    qid, f = request.form.get("id"), request.files.get("file")
+    if not f or not qid:
+        return jsonify(error="Send a question id and an image file."), 400
+    ext = os.path.splitext(f.filename or "")[1].lower()
+    if ext not in ALLOWED_IMG:
+        return jsonify(error="Allowed image types: " + ", ".join(sorted(ALLOWED_IMG))), 400
+    m = S["raw"].id == qid
+    if not m.any():
+        return jsonify(error="Question not found."), 404
+    name = f"{uuid.uuid4().hex}{ext}"
+    f.save(os.path.join(UPLOAD_IMG_DIR, name))
+    S["raw"].loc[m, "image_path"] = f"uploads/images/{name}"
+    persist()
+    return jsonify(bank=bank_payload())
+
+
 @app.post("/api/bank/save")
 def bank_save():
     rows = request.json.get("rows", [])
@@ -272,18 +360,28 @@ def bank_save():
         q = str(r.get("question", "")).strip()
         if not q:
             continue
-        keep = {"true_bloom_level": None, "bloom_level": None, "bloom_confidence": None, "bloom_source": None}
-        # unchanged questions keep their labels; edited ones are re-labelled
-        if old is not None and r.get("id") in old.index and old.loc[r["id"], "question"] == q:
-            for k in keep:
-                v = old.loc[r["id"], k]
-                keep[k] = None if pd.isna(v) else v
+        keep = {k: None for k in ("true_bloom_level", "bloom_level", "bloom_confidence", "bloom_source")}
+        carry = {k: None for k in ("qtype", "options", "answer", "image_path")}
+        if old is not None and r.get("id") in old.index:
+            o = old.loc[r["id"]]
+            for k in carry:                      # type / options / image stay with the question
+                carry[k] = nn(o[k])
+            if o["question"] == q:               # labels only if the text is unchanged
+                for k in keep:
+                    v = o[k]
+                    keep[k] = None if pd.isna(v) else v
+        for k in carry:                          # the frontend may send new values
+            if k in r:
+                v = r[k]
+                carry[k] = json.dumps(v) if isinstance(v, list) else nn(v)
         kept.append({"id": r.get("id", ""), "question": q,
                      "topic": str(r.get("topic") or "General").strip() or "General",
-                     "marks": max(1, min(50, int(r.get("marks") or 5))), **keep})
-    S["raw"] = pd.DataFrame(kept, columns=BASE_COLS) if kept else pd.DataFrame(columns=BASE_COLS)
+                     "marks": max(1, min(50, int(r.get("marks") or 5))), **keep, **carry})
     if kept:
+        S["raw"] = enrich(pd.DataFrame(kept, columns=BASE_COLS))
         S["raw"]["id"] = [f"Q{i:03d}" for i in range(1, len(S["raw"]) + 1)]
+    else:
+        S["raw"] = pd.DataFrame(columns=BASE_COLS)
     persist()
     return jsonify(bank=bank_payload())
 
@@ -330,12 +428,18 @@ def paper_generate():
     df = prepare(S["raw"])
     levels = j.get("levels") or LEVELS
     pool_df = df[df.predicted_level.isin(levels)] if len(df) else df
+    types = expand_types(j.get("types"))          # e.g. ['mcq'] or ['descriptive']; empty = all types
+    if types and len(pool_df):
+        mask = pool_df.qtype.isin(types)
+        if "image" in types:                      # 'image' also matches any question that has a picture
+            mask = mask | pool_df.image_path.notna()
+        pool_df = pool_df[mask]
     if pool_df.empty:
-        return jsonify(error="No questions available for the chosen levels."), 400
+        return jsonify(error="No questions available for the chosen levels / question types."), 400
     paper, _ = generate_by_constraints(pool_df, int(j.get("n", 10)), int(j.get("marks", 40)),
                                        j.get("difficulty", "Mixed"), None, int(j.get("seed", 1)))
     S.update(paper=paper, pool=pool_df.to_dict("records"), target=int(j.get("marks", 40)), manual=False)
-    return jsonify(paper_payload(j.get("sections", True)))
+    return jsonify(paper_payload(j.get("sections", True), j.get("group_by", "auto")))
 
 
 @app.post("/api/paper/manual")
@@ -351,7 +455,7 @@ def paper_manual():
     if not paper:
         return jsonify(error="None of the selected questions exist any more."), 400
     S.update(paper=paper, pool=list(by_id.values()), target=sum(q["marks"] for q in paper), manual=True)
-    return jsonify(paper_payload(j.get("sections", True)))
+    return jsonify(paper_payload(j.get("sections", True), j.get("group_by", "auto")))
 
 
 @app.get("/api/analytics")
@@ -394,7 +498,8 @@ def analytics():
 
 @app.post("/api/paper/layout")
 def paper_layout():
-    return jsonify(paper_payload(request.json.get("sections", True)))
+    j = request.json
+    return jsonify(paper_payload(j.get("sections", True), j.get("group_by", "auto")))
 
 
 @app.post("/api/paper/swap")
@@ -407,19 +512,20 @@ def paper_swap():
     old = paper[idx]
     used = {q["id"] for q in paper}
     free = [q for q in S["pool"] if q["id"] not in used and q["marks"] == old["marks"]]
-    options = [q for q in free if q["predicted_level"] == old["predicted_level"]] or free
+    base = [q for q in free if qtype_of(q) == qtype_of(old)] or free
+    options = [q for q in base if q["predicted_level"] == old["predicted_level"]] or base
     msg = ""
     if options:
         paper[idx] = random.choice(options)
     else:
         msg = "No replacement with the same marks is available."
-    return jsonify({**paper_payload(j.get("sections", True)), "msg": msg})
+    return jsonify({**paper_payload(j.get("sections", True), j.get("group_by", "auto")), "msg": msg})
 
 
 @app.post("/api/export/<fmt>")
 def export(fmt):
     j = request.json
-    groups, total = groups_for_export(j.get("sections", True))
+    groups, total = groups_for_export(j.get("sections", True), j.get("group_by", "auto"))
     if not groups:
         return jsonify(error="Generate a paper first."), 400
     title, subject, duration = j.get("title", "Exam"), j.get("subject", ""), j.get("duration", "")
@@ -429,9 +535,7 @@ def export(fmt):
         data = make_docx(groups, title, subject, duration, total)
         mime, name = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "question_paper.docx"
     else:
-        txt = "\n".join((f"\n{h}" if h else "") + "".join(f"\nQ{n}. {t} [{m} marks]" for n, t, m in items)
-                        for h, items in groups)
-        data, mime, name = txt.encode(), "text/plain", "question_paper.txt"
+        data, mime, name = make_txt(groups, title, subject, duration, total).encode(), "text/plain", "question_paper.txt"
     return send_file(io.BytesIO(data), mimetype=mime, as_attachment=True, download_name=name)
 
 
@@ -445,5 +549,6 @@ def boot():
 if __name__ == "__main__":
     boot()
     app.run(debug=True)
+
 
     

@@ -4,7 +4,8 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "qpg.db"
 COLS = ["id", "question", "topic", "marks", "true_bloom_level",
-        "bloom_level", "bloom_confidence", "bloom_source"]
+        "bloom_level", "bloom_confidence", "bloom_source",
+        "qtype", "options", "answer", "image_path"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS questions (
